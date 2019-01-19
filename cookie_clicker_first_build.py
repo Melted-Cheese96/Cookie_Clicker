@@ -9,10 +9,20 @@ import threading
 # Add comments to all methods in CookieClickerApp class.
 # Format Code.
 # Code Cleanup
+# Load increment values from save game.
 
 class CookieClickerApp:
     def __init__(self):
+        self.efficiency_values = {1: 10, 2: 15,
+                                  3: 25, 4: 35,
+                                  5: 45, 6: 65,
+                                  7: 85, 8: 95}  # A collection of all the tiers and their values.
+        self.efficiency_cookie_values = {1: 100, 2: 300,
+                                         3: 600, 4: 800,
+                                         5: 1000}
         self.xp = 0  # Keeps track of the player's XP
+        self.bakers_increment_amount = 0
+        self.baker_running = False
         self.efficiency_tier = 0  # Keeps track of the amount of times player has upgraded their efficiency skill
         self.church_tier = 0  # Keeps track of the amount of times player has upgraded the church assistance skill
         self.bakery_tier = 0  # Keeps track of the amount of times player has upgraded the bakery assistance skill.
@@ -53,10 +63,10 @@ class CookieClickerApp:
         save_name_entry = tk.Entry(load_progress_window)
         save_name_entry.grid(row=0, column=1)
         load_progress_button = tk.Button(load_progress_window, text='Load Progress',
-                                         command=lambda:self.load_progress(save_name_entry.get()))
+                                         command=lambda:self.load_progress(save_name_entry.get(), load_progress_window))
         load_progress_button.grid(row=1, column=1)
 
-    def load_progress(self, save_name):  # Loads progress for the player. Is tied to load_progress_button from window.
+    def load_progress(self, save_name, window):  # Loads progress for the player. Is tied to load_progress_button from window.
         print('Loading from save game {}'.format(save_name))
         try:
             if '.' in save_name:
@@ -86,19 +96,11 @@ class CookieClickerApp:
                     self.church_tier = int(stat)
                 elif stat_count == 6:  # On the last line the player's bakery tier is stored!
                     self.bakery_tier = int(stat)
-
-            for x in range(0, self.efficiency_tier):  # Increments the player's efficiency by 5 for every 'x'
-                self.increment_amount += 5
-
-            bakery_tier_count = 0  # Keeps track of what tier the player is on.
-            # If the tier is below 5 then the player only gets 5 extra cookies per 10 seconds.
-            for x in range(0, self.bakery_tier):
-                bakery_tier_count += 1
-                if bakery_tier_count < 5:
-                    self.baker_worker_thread(5)
-                else:
-                    self.baker_worker_thread(10)
-
+                elif stat_count == 7:
+                    print(stat)
+                    self.eligible_for_upgrade = bool(stat)
+            increment_value = self.efficiency_values[self.efficiency_tier]
+            self.increment_amount = increment_value
             # The following code are just in case of an error. REMOVE AFTER DONE!
             print('LVL: {}'.format(self.level_counter))
             print('XP: {}'.format(self.xp))
@@ -113,6 +115,7 @@ class CookieClickerApp:
             self.level_display.config(text=level_msg)
             self.total_amount_display.config(text=total_cookies_msg)
             messagebox.showinfo('Save loaded!', 'Your save has been loaded!')
+            window.destroy()
         except FileNotFoundError:
             messagebox.showerror('Save not found!', 'That save was not found!')
 
@@ -145,21 +148,31 @@ class CookieClickerApp:
             save_document.write('Church Tier:{}'.format(self.church_tier))
             save_document.write('\n')
             save_document.write('Bakery Tier:{}'.format(self.bakery_tier))
+            save_document.write('\n')
+            save_document.write(str(self.eligible_for_upgrade))
         messagebox.showinfo('Saved!', 'Your progress has been saved!')
         window.destroy()
 
     def upgrades_menu(self):  # Provides the window for the player's upgrade menu.
+        next_efficiency_tier_value = self.efficiency_tier + 1
+        next_efficiency_tier_value = self.efficiency_values[next_efficiency_tier_value]
+        cookie_amount = self.efficiency_tier + 1
+        cookie_amount = self.efficiency_cookie_values[cookie_amount]
+        print(cookie_amount)
+        print(next_efficiency_tier_value)
         baker_upgrade1_description = 'Bakers Assistance - 5 cookies every 5 seconds with a cool down of 10 seconds - ' \
                                      'need at least 300 cookies - unlocks at level 2'
-        efficiency_upgrade1_description = 'Efficiency Upgrade - 5 more cookies per click - need at least 100 cookies' \
-                                          '- unlocks at level 1'
+        efficiency_upgrade1_description = 'Efficiency Upgrade - {} cookies per click - need at least {} cookies' \
+                                         '- unlocks at level 1'.format(next_efficiency_tier_value, cookie_amount)
         church_assistance_upgrade1_description = 'Assistance from the local church group, 10 cookies per 5 seconds' \
                                                  ' need at least 500 cookies - unlocks at level 3 '
         upgrades_window = tk.Toplevel()
         upgrades_window.title('Upgrades - Cookie Clicker')
         upgrades_window.resizable(width=False, height=False)
         efficiency_upgrade = tk.Button(upgrades_window, text=efficiency_upgrade1_description,
-                                       command=lambda: self.apply_efficiency_upgrades(5, self.level_counter, None, 100))
+                                       command=lambda: self.apply_efficiency_upgrades(next_efficiency_tier_value,
+                                                                                      self.level_counter, 1,
+                                                                                      cookie_amount))
         efficiency_upgrade.grid(row=0)
         bakery_assistance = tk.Button(upgrades_window, text=baker_upgrade1_description,
                                       command=lambda: self.apply_bakers_upgrade(5, self.level_counter, 2, 300))
@@ -185,7 +198,7 @@ class CookieClickerApp:
     def apply_church_assistance(self, increment_amount, player_level, level_requirement, amount_of_cookies_needed):
         # This function checks if the player has met all the requirements to upgrade.
         if self.eligible_for_upgrade is True:
-            if player_level == level_requirement and self.total_amount_of_cookies >= amount_of_cookies_needed:
+            if player_level >= level_requirement and self.total_amount_of_cookies >= amount_of_cookies_needed:
                 self.total_amount_of_cookies -= amount_of_cookies_needed
                 new_cookie_count = 'Total cookies:{}'.format(self.total_amount_of_cookies)
                 self.total_amount_display.config(text=new_cookie_count)
@@ -198,11 +211,11 @@ class CookieClickerApp:
         else:
             messagebox.showinfo('Not allowed!', 'You are not eligible for an upgrade! Level up first!')
 
-    def baker_assistance(self, increment_amount):  # This function needs to be run in a thread as well!
+    def baker_assistance(self):  # This function needs to be run in a thread as well!
         # This function runs in a continuous loop and gives the player 5 cookies every 10 seconds.
         while True:
-            self.xp += increment_amount
-            self.total_amount_of_cookies += increment_amount
+            self.xp += self.bakers_increment_amount
+            self.total_amount_of_cookies += self.bakers_increment_amount
             # self.total_amount_of_cookies -= 5
             new_xp_count = 'XP:{}'.format(self.xp)
             new_total_count = 'Total cookies:{}'.format(self.total_amount_of_cookies)
@@ -211,21 +224,26 @@ class CookieClickerApp:
             sleep(10)
             # sleep(10)
 
-    def baker_worker_thread(self, cookies_boost_amount):
+    def baker_worker_thread(self):
         # Function that is responsible for putting the baker_assistance() function into a thread
-        print('Increment count: {}'.format(cookies_boost_amount))
-        threading.Thread(target=self.baker_assistance, args=(cookies_boost_amount,)).start()
+        threading.Thread(target=self.baker_assistance).start()
 
     def apply_bakers_upgrade(self, bakers_increment_amount, player_level, level_requirement, amount_of_cookies_needed):
         # Checks if the player meets the requirement for purchasing this certain upgrade
         if self.eligible_for_upgrade is True:
-            if player_level == level_requirement and self.total_amount_of_cookies >= amount_of_cookies_needed:
+            if player_level >= level_requirement and self.total_amount_of_cookies >= amount_of_cookies_needed:
                 self.total_amount_of_cookies -= amount_of_cookies_needed
                 updated_cookie_count = 'Total Cookies:{}'.format(self.total_amount_of_cookies)
                 self.total_amount_display.config(text=updated_cookie_count)
-                self.baker_worker_thread(bakers_increment_amount)
-                self.bakery_tier += 1
-                messagebox.showinfo('Bakers upgrade complete!', 'You now get {} more cookies every 10 seconds!'.format(bakers_increment_amount))
+                if self.baker_running is True:
+                    self.bakers_increment_amount += bakers_increment_amount
+                    messagebox.showinfo('Upgrade complete!', 'Your baker now generates {} cookies'.format(self.bakers_increment_amount))
+                else:
+                    self.bakers_increment_amount += bakers_increment_amount
+                    self.baker_worker_thread()
+                    self.bakery_tier += 1
+                    messagebox.showinfo('Bakers upgrade complete!', 'You now get {} more cookies every 10 seconds!'.format(bakers_increment_amount))
+                    self.baker_running = True
             else:
                 messagebox.showinfo('Error', 'You need to be a level {} for this upgrade!'.format(level_requirement))
         else:
@@ -235,27 +253,19 @@ class CookieClickerApp:
         # Checks if the player meets the requirement for purchasing an efficiency upgrade.
         print(self.eligible_for_upgrade)
         if self.eligible_for_upgrade is True:
-            if level_requirement is None:
+            if player_level >= level_requirement:
                 if self.total_amount_of_cookies >= amount_of_cookies_needed:
-                    self.total_amount_of_cookies  -= amount_of_cookies_needed
-                    updated_cookie_count = 'Total Cookies:{}'.format(self.total_amount_of_cookies)
-                    self.total_amount_display.config(text=updated_cookie_count)
-                    self.increment_amount += to_increase
+                    self.increment_amount = to_increase
                     print(self.increment_amount)
-                    messagebox.showinfo('Successful!', 'You now get {} more cookies per click!'.format(to_increase))
-                    self.efficiency_tier += 1
+                    messagebox.showinfo('Success!', 'You now get {} cookies per click'.format(to_increase))
                     self.eligible_for_upgrade = False
-            else:
-                if player_level == level_requirement and self.total_amount_of_cookies >= amount_of_cookies_needed:
-                    self.increment_amount += to_increase
-                    print(self.increment_amount)
-                    messagebox.showinfo('Successful!', 'You now get {} more cookies per click!'.format(to_increase))
                     self.efficiency_tier += 1
-                    self.eligible_for_upgrade = False
                 else:
-                    messagebox.showinfo('Not a high enough level!', 'You need to be level {} to use this!'.format(level_requirement))
+                    messagebox.showinfo('Not enough cookies!', 'You do not have enough cookies!')
+            else:
+                messagebox.showinfo('Low level!', 'You are not at the required level for this upgrade!')
         else:
-            messagebox.showinfo('Nice Try!', 'You cannot buy another upgrade yet! You have to level up first!')
+            messagebox.showinfo('Not eligible!', 'You are not eligible for an upgrade!')
 
     def upgrade_player(self, level):
         # This code is run when check_xp_amount detects the player has got enough xp to advance to the next level.
@@ -282,7 +292,7 @@ class CookieClickerApp:
     def increase_xp(self):
         # This is run every time the cookie is pressed.
         # The player's xp and total amount of cookies increased by the value of self.increment_amount.
-        # print(self.xp)
+        print('Increment value: {}'.format(self.increment_amount))
         self.xp += self.increment_amount
         self.total_amount_of_cookies += self.increment_amount
         new_total = 'Total Cookies:{}'.format(self.total_amount_of_cookies)
